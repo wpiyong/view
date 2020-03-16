@@ -1,0 +1,264 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Data;
+using System.Windows.Documents;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using System.Windows.Navigation;
+using System.Windows.Shapes;
+
+namespace gDiamondViewer.UserControls
+{
+    /// <summary>
+    /// Interaction logic for ImageFilterUserControl.xaml
+    /// </summary>
+    /// 
+
+    enum ImageProcMode
+    {
+        None = 0,
+        ContrastEnhancement,
+        LevelAdjustment
+    }
+
+    public class ParameterChangedEventArgs : EventArgs
+    {
+        public ParameterChangedEventArgs(string value, string origin)
+        {
+            Value = value;
+            senderName = origin;
+        }
+        public string senderName { get; }
+        public string Value { get; }
+    }
+
+    public partial class ImageFilterUserControl : UserControl
+    {
+        public event EventHandler<ParameterChangedEventArgs> PropertyChanged;
+
+        public static readonly DependencyProperty ContrastDependencyProperty = 
+            DependencyProperty.Register("enableContrastEnhancement", typeof(bool), typeof(ImageFilterUserControl));
+        public static readonly DependencyProperty LevelDependencyProperty =
+            DependencyProperty.Register("enableLevelAdjustment", typeof(bool), typeof(ImageFilterUserControl));
+
+        private int _filterMode;
+        public int FilterMode
+        {
+            get { return _filterMode; }
+            set
+            {
+                try
+                {
+                    if (value == _filterMode)
+                        return;
+                    _filterMode = value;
+                    RaisePropertyChangedEvent(new ParameterChangedEventArgs(Enum.GetName(typeof(ImageProcMode), value), "FilterMode"));
+                    if(value == 0)
+                    {
+                        enableContrastEnhancement = false;
+                        enableLevelAdjustment = false;
+                    } else if (value == 1)
+                    {
+                        enableLevelAdjustment = false;
+                        enableContrastEnhancement = true;
+                    } else if (value == 2)
+                    {
+                        enableContrastEnhancement = false;
+                        enableLevelAdjustment = true;
+                    }
+                }
+                catch
+                {
+
+                }
+            }
+        }
+
+        private double _brightness;
+        public double Brightness
+        {
+            get
+            {
+                return _brightness;
+            }
+            set
+            {
+                _brightness = value;
+            }
+        }
+
+        private double _contrast;
+        public double Contrast
+        {
+            get
+            {
+                return _contrast;
+            }
+            set
+            {
+                _contrast = value;
+            }
+        }
+
+        private double _gamma;
+        public double Gamma
+        {
+            get
+            {
+                return _gamma;
+            }
+            set
+            {
+                _gamma = value;
+            }
+        }
+
+        private double _gMin;
+        public double GMin
+        {
+            get
+            {
+                return _gMin;
+            }
+            set
+            {
+                _gMin = value;
+            }
+        }
+
+        private double _gMax;
+        public double GMax
+        {
+            get
+            {
+                return _gMax;
+            }
+            set
+            {
+                _gMax = value;
+            }
+        }
+
+        private double _fMin;
+        public double FMin
+        {
+            get
+            {
+                return _fMin;
+            }
+            set
+            {
+                _fMin = value;
+            }
+        }
+
+        private double _fMax;
+        public double FMax
+        {
+            get
+            {
+                return _fMax;
+            }
+            set
+            {
+                _fMax = value;
+            }
+        }
+
+        private bool _enableLevelAdjustment;
+        public bool enableLevelAdjustment
+        {
+            get
+            {
+                return _enableLevelAdjustment;
+            }
+            set
+            {
+                _enableLevelAdjustment = value;
+                SetValue(LevelDependencyProperty, value);
+            }
+        }
+
+        private bool _enableContrastEnhancement;
+        public bool enableContrastEnhancement
+        {
+            get
+            {
+                return _enableContrastEnhancement;
+            }
+            set
+            {
+                _enableContrastEnhancement = value;
+                SetValue(ContrastDependencyProperty, value);
+            }
+        }
+
+        public ImageFilterUserControl()
+        {
+            InitializeComponent();
+            Binding b = new Binding("FilterMode");
+            b.Source = this;
+            combo.SetBinding(ComboBox.SelectedIndexProperty, b);
+        }
+
+        private void SliderContrast_OnValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            var slider = sender as Slider;
+            Contrast = slider.Value;
+            RaisePropertyChangedEvent(new ParameterChangedEventArgs(slider.Value.ToString(), slider.Name));
+        }
+
+        private void SliderBrightness_OnValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            var slider = sender as Slider;
+            Brightness = slider.Value;
+            RaisePropertyChangedEvent(new ParameterChangedEventArgs(slider.Value.ToString(), slider.Name));
+        }
+
+        private void SliderGamma_OnValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            var slider = sender as Slider;
+            Gamma = slider.Value;
+            RaisePropertyChangedEvent(new ParameterChangedEventArgs(slider.Value.ToString(), slider.Name));
+        }
+
+        private void SliderFMax_OnValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            var slider = sender as Slider;
+            FMax = slider.Value;
+            RaisePropertyChangedEvent(new ParameterChangedEventArgs(slider.Value.ToString(), slider.Name));
+        }
+
+        private void SliderFMin_OnValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            var slider = sender as Slider;
+            FMin = slider.Value;
+            RaisePropertyChangedEvent(new ParameterChangedEventArgs(slider.Value.ToString(), slider.Name));
+        }
+
+        private void SliderGMax_OnValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            var slider = sender as Slider;
+            GMax = slider.Value;
+            RaisePropertyChangedEvent(new ParameterChangedEventArgs(slider.Value.ToString(), slider.Name));
+        }
+
+        private void SliderGMin_OnValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            var slider = sender as Slider;
+            GMin = slider.Value;
+            RaisePropertyChangedEvent(new ParameterChangedEventArgs(slider.Value.ToString(), slider.Name));
+        }
+
+        protected virtual void RaisePropertyChangedEvent(ParameterChangedEventArgs eventArgs)
+        {
+            PropertyChanged?.Invoke(this, eventArgs);
+        }
+    }
+}

@@ -1,0 +1,20 @@
+﻿gDiamondViewer
+
+
+winexe
+C#
+.cs
+C:\work\GIA Diamond View\app\gDiamondViewer\gDiamondViewer\obj\x64\Debug\
+gDiamondViewer
+none
+false
+TRACE;DEBUG;WIN64
+C:\work\GIA Diamond View\app\gDiamondViewer\gDiamondViewer\App.xaml
+4-1353701534
+
+21-1425701727
+26-1467386742
+UserControls\ImageFilterUserControl.xaml;View\MainWindow.xaml;View\PhosParamatersWindow.xaml;View\PhosResultsWindow.xaml;
+
+False
+

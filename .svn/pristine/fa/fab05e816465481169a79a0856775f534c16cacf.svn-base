@@ -1,0 +1,357 @@
+﻿using gDiamondViewer.Model;
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Input;
+using ViewModelLib;
+
+namespace gDiamondViewer.ViewModel
+{
+    public delegate void Callback(object sender, object  result);
+
+    class MeasurementViewModel : ViewModelBase
+    {
+        StatusViewModel _statusVM;
+        Stack<DateTime> _timestamps = new Stack<DateTime>();
+        bool _lightON = false;
+        bool _camPhosActive = false;
+        bool _spectroPhosActive = false;
+        CamPhosResults _camPhosResults;
+        SpectrometerPhosResults _spectrometerPhosResults;
+
+        CameraViewModel _cameraVM;
+        SpectrometerViewModel _spectrometerVM;
+
+        public MeasurementViewModel(StatusViewModel svm, CameraViewModel cvm, SpectrometerViewModel sp)
+        {
+            base.DisplayName = "MeasurementViewModel";
+            _statusVM = svm;
+            _cameraVM = cvm;
+            _spectrometerVM = sp;
+
+            ArduinoConnected = false;
+
+            CommandEnd = new RelayCommand(param => End(), cc => ArduinoConnected && _lightON);
+            CommandStartLed = new RelayCommand(param => StartLed(), cc => ArduinoConnected && !_lightON);
+            CommandStartFluorescence = new RelayCommand(param => StartFluorescence(), cc => ArduinoConnected && !_lightON);
+            CommandStartPhosphorescence = new RelayCommand(param => StartPhosphorescence(), cc => ArduinoConnected && !_lightON);
+            CommandStartPump = new RelayCommand(param => StartPump(), cc => ArduinoConnected && !_lightON);
+
+            BackgroundWorker bw = new BackgroundWorker();
+            bw.DoWork += ConnectToArduino;
+            bw.RunWorkerCompleted += ConnectToArduinoCompleted;
+            bw.RunWorkerAsync();
+        }
+
+        public RelayCommand CommandEnd { get; set; }
+        public RelayCommand CommandStartLed { get; set; }
+        public RelayCommand CommandStartFluorescence { get; set; }
+        public RelayCommand CommandStartPhosphorescence { get; set; }
+        public RelayCommand CommandStartPump { get; set; }
+
+        #region Properties
+        bool _ArduinoConnected;
+        public bool ArduinoConnected
+        {
+            get { return _ArduinoConnected; }
+            set
+            {
+                _ArduinoConnected = value;
+                OnPropertyChanged("ArduinoConnected");
+                Application.Current.Dispatcher.BeginInvoke(new Action(System.Windows.Input.CommandManager.InvalidateRequerySuggested));
+
+            }
+        }
+        #endregion
+
+
+        #region connect_arduino
+
+        void ConnectToArduino(object sender, DoWorkEventArgs e)
+        {
+            _statusVM.Busy++;
+            DateTime timestamp = DateTime.Now;
+            var sts = new StatusMessage { Timestamp = timestamp, Message = "Trying to connect to arduino..." };
+            _statusVM.Messages.Add(sts);
+            _timestamps.Push(timestamp);
+            ArduinoConnected = false;
+
+            e.Result = null;
+
+            try
+            {
+                if (Arduino.Connect())
+                {
+                    e.Result = "Arduino";
+                }
+            }
+            catch
+            {
+                e.Result = null;
+            }
+        }
+
+        void ConnectToArduinoCompleted(object sender, RunWorkerCompletedEventArgs e)
+        {
+            var ts = _timestamps.Pop();
+            var sm = _statusVM.Messages.Where(s => s.Timestamp == ts).First();
+            _statusVM.Messages.Remove(sm);
+            _statusVM.Busy--;
+
+            if (e.Result != null)
+            {
+                _statusVM.Messages.Add(new StatusMessage { Timestamp = DateTime.Now, Message = "Connected to " + e.Result.ToString() });
+                ArduinoConnected = true;
+            }
+            else
+            {
+                var res = MessageBox.Show("Failed to connect to Arduino", "Arduino connection error, retry?", MessageBoxButton.YesNo);
+                if (res == MessageBoxResult.Yes)
+                {
+                    BackgroundWorker bw = new BackgroundWorker();
+                    bw.DoWork += ConnectToArduino;
+                    bw.RunWorkerCompleted += ConnectToArduinoCompleted;
+                    bw.RunWorkerAsync();
+                }
+                else
+                {
+                    var sts = new StatusMessage
+                    {
+                        Timestamp = DateTime.Now,
+                        Message = "Arduino connect error!"
+                    };
+                    _statusVM.Messages.Add(sts);
+                }
+            }
+        }
+
+        #endregion
+
+        void StartPump()
+        {
+            if (!Arduino.PumpOn())
+            {
+                MessageBox.Show("Serial Port", "Error");
+            }
+        }
+
+        void StartLed()
+        {
+            if (!Arduino.RoomLightOn())
+            {
+                MessageBox.Show("Serial Port", "Error");
+            }
+            else
+            {
+                _cameraVM.SetShutterTime(Properties.Settings.Default.ShutterTimeLed);
+                _lightON = true;
+                Application.Current.Dispatcher.BeginInvoke(new Action(System.Windows.Input.CommandManager.InvalidateRequerySuggested));
+                _statusVM.Busy++;
+                DateTime timestamp = DateTime.Now;
+                var sts = new StatusMessage { Timestamp = timestamp, Message = "Led is ON.  Camera shutter = " + Properties.Settings.Default.ShutterTimeLed + " ms" };
+                _statusVM.Messages.Add(sts);
+                _timestamps.Push(timestamp);
+            }
+        }
+
+        void StartFluorescence()
+        {
+            if (!Arduino.FluorescenceOn())
+            {
+                MessageBox.Show("Serial Port", "Error");
+            }
+            else
+            {
+                if (!_cameraVM.SetShutterTime(Properties.Settings.Default.ShutterTimePhos))
+                {
+                    MessageBox.Show("Could not set shutter time", "Camera error");
+                    return;
+                }
+
+                _lightON = true;
+                Application.Current.Dispatcher.BeginInvoke(new Action(System.Windows.Input.CommandManager.InvalidateRequerySuggested));
+                _statusVM.Busy++;
+                DateTime timestamp = DateTime.Now;
+                var sts = new StatusMessage { Timestamp = timestamp, Message = "Fluorescence measurement is active." };
+                _statusVM.Messages.Add(sts);
+                _timestamps.Push(timestamp);
+            }
+        }
+
+        void StartPhosphorescence()
+        {
+            var win = new gDiamondViewer.View.PhosParamatersWindow();
+            var result = win.ShowDialog();
+            if (result == true)
+            {
+                string error = "";
+                Callback WhenMeasurementEnds = PhosphorescenceMeasurementCompleteCallback;
+
+                if (Properties.Settings.Default.PhosImageCount == 0 && Properties.Settings.Default.PhosSpectraCount == 0)
+                {
+                    MessageBox.Show("No measurements selected!", "Bad parameters");
+                    return;
+                }
+
+                if (!_cameraVM.SetShutterTime(Properties.Settings.Default.ShutterTimePhos))
+                {
+                    MessageBox.Show("Could not set shutter time", "Camera error");
+                    return;
+                }
+
+                _spectrometerPhosResults = new SpectrometerPhosResults(0, new List<AvantesSpectrum>());
+                _camPhosResults = new CamPhosResults(0, new List<PtGreyCameraImage>());
+
+                if (Properties.Settings.Default.PhosImageCount > 0)
+                {
+                    _camPhosActive = _cameraVM.StartPhosphorescenceMeasurement(Properties.Settings.Default.PhosCamDelay,
+                        Properties.Settings.Default.PhosImageCount, WhenMeasurementEnds, out error);
+
+                    if (!_camPhosActive)
+                    {
+                        MessageBox.Show(error, "Phosphorescence measurement not started");
+                        return;
+                    }
+                    
+                }
+
+                if (Properties.Settings.Default.PhosSpectraCount > 0)
+                {
+                    _spectroPhosActive = _spectrometerVM.StartPhosphorescenceMeasurement(Properties.Settings.Default.PhosSpectDelay,
+                        Properties.Settings.Default.PhosSpectraCount, WhenMeasurementEnds, out error);
+
+                    if (!_spectroPhosActive)
+                    {
+                        if (Properties.Settings.Default.PhosImageCount > 0)
+                            _cameraVM.AbortPhosMeasurement();
+                        MessageBox.Show(error, "Phosphorescence measurement not started");
+                        return;
+                    }
+                }
+
+                if (!Arduino.PhosphorescenceOn())
+                {
+                    if (Properties.Settings.Default.PhosImageCount > 0)
+                        _cameraVM.AbortPhosMeasurement();
+                    if (Properties.Settings.Default.PhosSpectraCount > 0)
+                        _spectrometerVM.AbortPhosMeasurement();
+                    MessageBox.Show("Serial Port Error... You may have to reset the camera.", "Aborting...");
+                }
+                else
+                {
+                    _lightON = true;
+                    _statusVM.Busy++;
+                    DateTime timestamp = DateTime.Now;
+                    var sts = new StatusMessage { Timestamp = timestamp, Message = "Phosphorescence measurement is active." };
+                    _statusVM.Messages.Add(sts);
+                    _timestamps.Push(timestamp);
+                }
+            }
+        }
+
+        void PhosphorescenceMeasurementCompleteCallback(object sender, object result)
+        {
+            if (Object.ReferenceEquals(sender.GetType(), _cameraVM.GetType()))
+            {
+                _camPhosActive = false;
+                _camPhosResults = (CamPhosResults)result;
+            }
+            else if (Object.ReferenceEquals(sender.GetType(), _spectrometerVM.GetType()))
+            {
+                _spectroPhosActive = false;
+                _spectrometerPhosResults = (SpectrometerPhosResults)result;
+            }
+
+            if (!_camPhosActive && !_spectroPhosActive)
+                ShowPhosResults();
+        }
+
+        void ShowPhosResults()
+        {
+            if (_camPhosResults.Images.Count == Properties.Settings.Default.PhosImageCount 
+                && _spectrometerPhosResults.Spectra.Count == Properties.Settings.Default.PhosSpectraCount)
+            {
+                var ts = _timestamps.Pop();
+                var sm = _statusVM.Messages.Where(s => s.Timestamp == ts).First();
+                _statusVM.Messages.Remove(sm);
+                _statusVM.Busy--;
+
+                _statusVM.Busy++;
+                DateTime timestamp = DateTime.Now;
+                var sts = new StatusMessage { Timestamp = timestamp, Message = "Phosphorescence measurement completed." };
+                _statusVM.Messages.Add(sts);
+                _timestamps.Push(timestamp);
+
+                var phosResWindow = new View.PhosResultsWindow();
+                var phosResultsVM = new PhosResultsViewModel(_camPhosResults, _spectrometerPhosResults);
+                phosResWindow.DataContext = phosResultsVM;
+                phosResWindow.Closing += phosResultsVM.OnWindowClosing;
+                phosResWindow.Owner = Window.GetWindow(Application.Current.MainWindow);
+                phosResWindow.ShowDialog();
+            }
+            else
+            {
+                MessageBox.Show("Failed to collect all data", "Error");
+            }
+            End();
+        }
+
+        void End()
+        {
+            if (!Arduino.End())
+            {
+                MessageBox.Show("Serial Port", "Error");
+            }
+            else if (_lightON)
+            {
+                _lightON = false;
+                _camPhosActive = _spectroPhosActive = false;
+                Application.Current.Dispatcher.BeginInvoke(new Action(System.Windows.Input.CommandManager.InvalidateRequerySuggested));
+                var ts = _timestamps.Pop();
+                var sm = _statusVM.Messages.Where(s => s.Timestamp == ts).First();
+                _statusVM.Messages.Remove(sm);
+                _statusVM.Busy--;
+
+                if (!_cameraVM.SetShutterTime(Properties.Settings.Default.ShutterTimePhos))
+                {
+                    MessageBox.Show("Could not set shutter time", "Camera error");
+                    return;
+                }
+            }
+        }
+
+        #region dispose
+
+        private bool _disposed = false;
+
+        void Close()
+        {
+            if (_ArduinoConnected)
+                Arduino.End();
+        }
+
+        protected override void OnDispose()
+        {
+            ViewModelDispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        void ViewModelDispose(bool disposing)
+        {
+            if (!_disposed)
+            {
+                if (disposing)
+                {
+                    Close();
+                }
+                _disposed = true;
+            }
+        }
+
+        #endregion
+    }
+}

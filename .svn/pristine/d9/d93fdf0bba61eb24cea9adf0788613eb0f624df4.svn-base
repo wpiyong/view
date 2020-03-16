@@ -1,0 +1,161 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Data;
+using System.Windows.Documents;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using System.Windows.Navigation;
+using System.Windows.Shapes;
+
+namespace gDiamondViewer.UserControls
+{
+    /// <summary>
+    /// Interaction logic for ImageFilterUserControl.xaml
+    /// </summary>
+    public partial class ImageFilterUserControl : UserControl
+    {
+        private double _brightness;
+        public double Brightness
+        {
+            get
+            {
+                return _brightness;
+            }
+            set
+            {
+                _brightness = value;
+            }
+        }
+
+        private double _contrast;
+        public double Contrast
+        {
+            get
+            {
+                return _contrast;
+            }
+            set
+            {
+                _contrast = value;
+            }
+        }
+
+        private double _gamma;
+        public double Gamma
+        {
+            get
+            {
+                return _gamma;
+            }
+            set
+            {
+                _gamma = value;
+            }
+        }
+
+        private double _gMin;
+        public double GMin
+        {
+            get
+            {
+                return _gMin;
+            }
+            set
+            {
+                _gMin = value;
+            }
+        }
+
+        private double _gMax;
+        public double GMax
+        {
+            get
+            {
+                return _gMax;
+            }
+            set
+            {
+                _gMax = value;
+            }
+        }
+
+        private double _fMin;
+        public double FMin
+        {
+            get
+            {
+                return _fMin;
+            }
+            set
+            {
+                _fMin = value;
+            }
+        }
+
+        private double _fMax;
+        public double FMax
+        {
+            get
+            {
+                return _fMax;
+            }
+            set
+            {
+                _fMax = value;
+            }
+        }
+
+        public ImageFilterUserControl()
+        {
+            InitializeComponent();
+        }
+
+        private void SliderContrast_OnValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            var slider = sender as Slider;
+            Contrast = slider.Value;
+        }
+
+        private void SliderBrightness_OnValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            var slider = sender as Slider;
+            Brightness = slider.Value;
+        }
+
+        private void SliderGamma_OnValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            var slider = sender as Slider;
+            Gamma = slider.Value;
+        }
+
+        private void SliderFMax_OnValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            var slider = sender as Slider;
+            FMax = slider.Value;
+        }
+
+        private void SliderFMin_OnValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            var slider = sender as Slider;
+            FMin = slider.Value;
+        }
+
+        private void SliderGMax_OnValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            var slider = sender as Slider;
+            GMax = slider.Value;
+        }
+
+        private void SliderGMin_OnValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            var slider = sender as Slider;
+            GMin = slider.Value;
+        }
+    }
+}

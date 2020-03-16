@@ -1,0 +1,428 @@
+﻿using gDiamondViewer.Model;
+using Microsoft.Research.DynamicDataDisplay.DataSources;
+using Microsoft.Win32;
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Media.Imaging;
+using ViewModelLib;
+
+namespace gDiamondViewer.ViewModel
+{
+    class CamPhosResults
+    {
+        public ulong StartTimeStamp;
+        public List<PtGreyCameraImage> Images;
+
+        public CamPhosResults(ulong startTime, List<PtGreyCameraImage> images)
+        {
+            StartTimeStamp = startTime;
+            Images = images.ToList();
+        }
+    }
+
+    class SpectrometerPhosResults
+    {
+        public ulong StartTimeStamp;
+        public List<AvantesSpectrum> Spectra;
+
+        public SpectrometerPhosResults(ulong startTime, List<AvantesSpectrum> spectra)
+        {
+            StartTimeStamp = startTime;
+            Spectra = spectra.ToList();
+        }
+    }
+
+    class PhosResultsViewModel : ViewModelBase
+    {
+        bool _dataSaved = false;
+        List<PtGreyCameraImage> _phosImages = new List<PtGreyCameraImage>();
+        ulong _startTimeStamp;
+        List<AvantesSpectrum> _phosSpectra = new List<AvantesSpectrum>();
+        ulong _spectrumStartTimeStamp;
+        bool _busy = false;
+
+        public PhosResultsViewModel(CamPhosResults camResults, SpectrometerPhosResults spectroResults)
+        {
+            base.DisplayName = "PhosResultsViewModel";
+            _phosImages = camResults.Images;
+            _phosSpectra = spectroResults.Spectra;
+            CurrentPhosItem = 1;
+            CurrentSpectraItem = 1;
+            SaveFolderPath = Properties.Settings.Default.SaveFolderPath;
+            _startTimeStamp = camResults.StartTimeStamp;
+            _spectrumStartTimeStamp = spectroResults.StartTimeStamp;
+
+            CommandSetFolder = new RelayCommand(param => SetFolder(), cc=>_busy == false);
+            CommandPreviousPhosItem = new RelayCommand(param => PreviousPhosItem(), cc => _busy == false);
+            CommandNextPhosItem = new RelayCommand(param => NextPhosItem(), cc => _busy == false);
+            CommandPreviousSpectraItem = new RelayCommand(param => PreviousSpectraItem(), cc => _busy == false);
+            CommandNextSpectraItem = new RelayCommand(param => NextSpectraItem(), cc => _busy == false);
+            CommandSave = new RelayCommand(param => Save(), cc => _busy == false);
+            CommandSaveAll = new RelayCommand(param => Save(true), cc => _busy == false);
+        }
+
+        public RelayCommand CommandPreviousPhosItem { get; set; }
+        public RelayCommand CommandNextPhosItem { get; set; }
+        public RelayCommand CommandPreviousSpectraItem { get; set; }
+        public RelayCommand CommandNextSpectraItem { get; set; }
+        public RelayCommand CommandSetFolder { get; set; }
+        public RelayCommand CommandSave { get; set; }
+        public RelayCommand CommandSaveAll { get; set; }
+
+        #region properties
+        string _saveFolderPath;
+        public string SaveFolderPath
+        {
+            get { return _saveFolderPath; }
+            set
+            {
+                _saveFolderPath = value;
+                OnPropertyChanged("SaveFolderPath");
+            }
+        }
+
+        public string NumPhosItems
+        {
+            get { return _phosImages.Count.ToString(); }
+        }
+
+        public string NumSpectraItems
+        {
+            get { return _phosSpectra.Count.ToString(); }
+        }
+
+        uint _currentPhosItem;
+        public uint CurrentPhosItem
+        {
+            get
+            {
+                if (_phosImages.Count > 0)
+                    return _currentPhosItem;
+                else
+                    return 0;
+            }
+            set
+            {
+                if (value > 0 && value <= _phosImages.Count)
+                {
+                    _currentPhosItem = value;
+                }
+                OnPropertyChanged("CurrentPhosItem");
+                OnPropertyChanged("PhosImage");
+                OnPropertyChanged("FrameId");
+                OnPropertyChanged("TimeStamp");
+                OnPropertyChanged("TimeStampDelta");
+            }
+        }
+
+        uint _currentSpectraItem;
+        public uint CurrentSpectraItem
+        {
+            get
+            {
+                if (_phosSpectra.Count > 0)
+                    return _currentSpectraItem;
+                else
+                    return 0;
+            }
+            set
+            {
+                if (value > 0 && value <= _phosSpectra.Count)
+                {
+                    _currentSpectraItem = value;
+                }
+                OnPropertyChanged("CurrentSpectraItem");
+                OnPropertyChanged("PhosSpectrum");
+                OnPropertyChanged("SpectrumId");
+                OnPropertyChanged("SpectrumTimeStamp");
+                OnPropertyChanged("SpectrumTimeStampDelta");
+            }
+        }
+
+        public BitmapSource PhosImage
+        {
+            get
+            {
+                if (_phosImages.Count > 0)
+                    return BitmapToBitmapSource(_phosImages[(int)(CurrentPhosItem - 1)].Image);
+                else
+                    return null;
+            }
+        }
+
+        public string FrameId
+        {
+            get
+            {
+                if (_phosImages.Count > 0)
+                    return _phosImages[(int)(CurrentPhosItem - 1)].FrameId.ToString();
+                else
+                    return "";
+            }
+        }
+
+        public string TimeStamp
+        {
+            get
+            {
+                if (_phosImages.Count > 0)
+                    return _phosImages[(int)(CurrentPhosItem - 1)].TimeStamp.ToString();
+                else
+                    return "";
+            }
+        }
+
+        public string TimeStampDelta
+        {
+            get
+            {
+                //if (CurrentItem > 1)
+                //    return (Math.Round((double)(_phosImages[(int)(CurrentItem - 1)].TimeStamp - 
+                //        _phosImages[(int)(CurrentItem - 2)].TimeStamp)/1000000d, 0)).ToString();
+                if (_phosImages.Count > 0)
+                    return (Math.Round((double)(_phosImages[(int)(CurrentPhosItem - 1)].TimeStamp -
+                        _startTimeStamp) / 1000000d, 0)).ToString();
+                else
+                    return "";
+            }
+        }
+
+        public ObservableDataSource<Point> PhosSpectrum
+        {
+            get
+            {
+                if (_phosSpectra.Count > 0)
+                    return new ObservableDataSource<Point>(_phosSpectra[(int)(CurrentSpectraItem - 1)].Spectrum.Take(2048));
+                else
+                    return null;
+            }
+        }
+        public string SpectrumId
+        {
+            get
+            {
+                if (_phosSpectra.Count > 0)
+                    return _phosSpectra[(int)(CurrentSpectraItem - 1)].Id.ToString();
+                else
+                    return "";
+            }
+        }
+
+        public string SpectrumTimeStamp
+        {
+            get
+            {
+                if (_phosSpectra.Count > 0)
+                    return _phosSpectra[(int)(CurrentSpectraItem - 1)].TimeStamp.ToString();
+                else
+                    return "";
+            }
+        }
+
+        public string SpectrumTimeStampDelta
+        {
+            get
+            {
+                if (_phosSpectra.Count > 0)
+                    return (Math.Round((double)(_phosSpectra[(int)(CurrentSpectraItem - 1)].TimeStamp -
+                        _spectrumStartTimeStamp) / 1000d, 0)).ToString();
+                else
+                    return "";
+            }
+        }
+
+        #endregion
+
+
+        void SetFolder()
+        {
+            System.Windows.Forms.FolderBrowserDialog folderBrowserDialog =
+                    new System.Windows.Forms.FolderBrowserDialog();
+
+            if (_saveFolderPath != null)
+                folderBrowserDialog.SelectedPath = _saveFolderPath;
+
+            if (folderBrowserDialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+            {
+                SaveFolderPath = folderBrowserDialog.SelectedPath;
+                Properties.Settings.Default.SaveFolderPath = SaveFolderPath;
+                Properties.Settings.Default.Save();
+            }
+        }
+
+        void PreviousPhosItem()
+        {
+            if (CurrentPhosItem > 1)
+                CurrentPhosItem--;
+        }
+
+        void NextPhosItem()
+        {
+            if (CurrentPhosItem < _phosImages.Count)
+                CurrentPhosItem++ ;
+        }
+
+        void PreviousSpectraItem()
+        {
+            if (CurrentSpectraItem > 1)
+                CurrentSpectraItem--;
+        }
+
+        void NextSpectraItem()
+        {
+            if (CurrentSpectraItem < _phosSpectra.Count)
+                CurrentSpectraItem++;
+        }
+
+
+        void Save(bool all = false)
+        {
+            _busy = true;
+            Application.Current.Dispatcher.BeginInvoke(new Action(System.Windows.Input.CommandManager.InvalidateRequerySuggested));
+            BackgroundWorker bw = new BackgroundWorker();
+            bw.DoWork += SaveDoWork;
+            bw.RunWorkerCompleted += SaveCompleted;
+            bw.RunWorkerAsync(all);
+        }
+
+        void SaveDoWork(object sender, DoWorkEventArgs e)
+        {
+            e.Result = false;
+            
+            try
+            {
+                var ts = DateTime.Now.ToString("MMddyyyy_HHmmss");
+                string imageFolderPath = SaveFolderPath + @"\images_" + ts;
+                Directory.CreateDirectory(imageFolderPath);
+                string spectraFolderPath = SaveFolderPath + @"\spectra_" + ts;
+                Directory.CreateDirectory(spectraFolderPath);
+
+                if ((bool)(e.Argument) == true)
+                {
+                    for (int i = 0; i < _phosImages.Count; i++)
+                    {
+                        var fileName = imageFolderPath + @"\phos_image" + _phosImages[i].FrameId +
+                            "_" + (Math.Round((_phosImages[i].TimeStamp - _startTimeStamp) / 1000000d, 0)) + "ms.jpg";
+                        using (System.Drawing.Bitmap bmp = new System.Drawing.Bitmap(_phosImages[i].Image))
+                        {
+                            if (Path.GetExtension(fileName).ToUpper().Contains("JPG"))
+                            {
+                                bmp.Save(fileName, System.Drawing.Imaging.ImageFormat.Jpeg);
+                            }
+                            else
+                            {
+                                bmp.Save(fileName);
+                            }
+                        }
+                    }
+                    for (int i = 0; i < _phosSpectra.Count; i++)
+                    {
+                        var spectraFileName = spectraFolderPath + @"\phos_spectrum" +
+                        _phosSpectra[i].Id +
+                        "_" + (Math.Round((_phosSpectra[i].TimeStamp - _spectrumStartTimeStamp) / 1000d, 0)) + "ms.spc";
+                        double[] wl = _phosSpectra[i].Spectrum.Select(p => p.X).ToArray();
+                        double[] counts = _phosSpectra[i].Spectrum.Select(p => p.Y).ToArray();
+
+                        if (!SPCHelper.SaveToSPC(wl, counts, spectraFileName, "Wavelength (nm)", "Intensity"))
+                            throw new Exception("spectra save fail");
+                    }
+                    _dataSaved = true;
+                }
+                else
+                {
+                    if (_phosImages.Count > 0)
+                    {
+                        var imgFileName = imageFolderPath + @"\phos_image" + _phosImages[(int)(CurrentPhosItem - 1)].FrameId +
+                                "_" + (Math.Round((_phosImages[(int)(CurrentPhosItem - 1)].TimeStamp - _startTimeStamp) / 1000000d, 0)) + "ms.jpg";
+                        using (System.Drawing.Bitmap bmp = new System.Drawing.Bitmap(_phosImages[(int)(CurrentPhosItem - 1)].Image))
+                        {
+                            if (Path.GetExtension(imgFileName).ToUpper().Contains("JPG"))
+                            {
+                                bmp.Save(imgFileName, System.Drawing.Imaging.ImageFormat.Jpeg);
+                            }
+                            else
+                            {
+                                bmp.Save(imgFileName);
+                            }
+                        }
+                    }
+
+                    if (_phosSpectra.Count > 0)
+                    {
+                        var spectraFileName = spectraFolderPath + @"\phos_spectrum" +
+                            _phosSpectra[(int)(CurrentSpectraItem - 1)].Id +
+                            "_" + (Math.Round((_phosSpectra[(int)(CurrentSpectraItem - 1)].TimeStamp - _spectrumStartTimeStamp) / 1000d, 0)) + "ms.spc";
+                        double[] wl = _phosSpectra[(int)(CurrentSpectraItem - 1)].Spectrum.Select(p => p.X).ToArray();
+                        double[] counts = _phosSpectra[(int)(CurrentSpectraItem - 1)].Spectrum.Select(p => p.Y).ToArray();
+
+                        if (!SPCHelper.SaveToSPC(wl, counts, spectraFileName, "Wavelength (nm)", "Intensity"))
+                            throw new Exception("spectra save fail");
+                    }
+                }
+
+                e.Result = true;
+            }
+            catch (Exception ex)
+            {
+                e.Result = false;
+            }
+            finally
+            {
+
+            }
+
+        }
+
+        void SaveCompleted(object sender, RunWorkerCompletedEventArgs e)
+        {
+            
+            string message = "Not saved";
+
+            if ((bool)e.Result == true)
+            {
+                message = "Saved";
+            }
+
+            MessageBox.Show(message, "Complete");
+
+            _busy = false;
+            Application.Current.Dispatcher.BeginInvoke(new Action(System.Windows.Input.CommandManager.InvalidateRequerySuggested));
+        }
+
+        BitmapSource BitmapToBitmapSource(System.Drawing.Bitmap bitmap)
+        {
+            var bitmapData = bitmap.LockBits(
+                new System.Drawing.Rectangle(0, 0, bitmap.Width, bitmap.Height),
+                System.Drawing.Imaging.ImageLockMode.ReadOnly, bitmap.PixelFormat);
+
+            var bitmapSource = System.Windows.Media.Imaging.BitmapSource.Create(
+                bitmapData.Width, bitmapData.Height, bitmap.HorizontalResolution, bitmap.VerticalResolution,
+                System.Windows.Media.PixelFormats.Bgr32, null,
+                bitmapData.Scan0, bitmapData.Stride * bitmapData.Height, bitmapData.Stride);
+
+            bitmap.UnlockBits(bitmapData);
+            return bitmapSource;
+        }
+
+
+        public void OnWindowClosing(object sender, CancelEventArgs e)
+        {
+            if (!_dataSaved)
+            {
+                var res = MessageBox.Show("All the data has not been saved.  Do you want to close anyway?",
+                    "Data has not been saved", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                if (res != MessageBoxResult.Yes)
+                {
+                    e.Cancel = true;//prevent closing
+                }
+            }
+        }
+
+    }
+}
